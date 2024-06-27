@@ -59,6 +59,9 @@
   "files.associations": {
     "*.txt": "gml-gm81",
     "iosfwd": "cpp",
-    "iostream": "cpp"
+    "iostream": "cpp",
+    "regex": "cpp",
+    "fstream": "cpp",
+    "filesystem": "cpp"
   }
 }

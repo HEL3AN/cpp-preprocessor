@@ -14,84 +14,77 @@ path operator""_p(const char* data, std::size_t sz) {
     return path(data, data + sz);
 }
 
-bool Preprocess(ifstream& in_file, ofstream& out_file, const path& in_file_path, const vector<path>& include_directories) {
+bool ProcessFile(const path& file_path, std::ostream& out_file, const vector<path>& include_directories, const path& current_directory) {
+    ifstream in_file(file_path);
+    if (!in_file.is_open()) {
+        return false;
+    }
+
     static regex user_include(R"/(\s*#\s*include\s*"([^"]*)"\s*)/");
     static regex default_include(R"/(\s*#\s*include\s*<([^>]*)>\s*)/");
-    smatch m;
-
+    
     string line;
-    while (getline(in_file, line)) {
-        if (regex_match(line, m, default_include)) {
-            path p = string(m[1]);
-            cout << p.string() << endl;
+    size_t line_number = 0;
 
-            ifstream include_in_file;
-            include_in_file.close();
-            vector<path> sub_dirs;
-            for (const auto& dir_path : include_directories) {   
-                for (const auto& dir_entry : filesystem::directory_iterator(dir_path)) {
-                    if (dir_entry.is_regular_file() && dir_entry.path().filename() == p.filename()) {
-                        include_in_file.open(dir_entry.path());
-                        Preprocess(include_in_file, out_file, dir_entry.path(), include_directories);
-                    } else if (dir_entry.is_directory()) {
-                        Preprocess(in_file, out_file, in_file_path, {dir_entry.path()});
+    while(getline(in_file, line)) {
+        ++line_number;
+        smatch match;
+        if (regex_match(line, match, user_include)) {
+            bool found = false;
+            path include_file = current_directory / match[1].str();
+            if (filesystem::exists(include_file)) {
+                found = true;
+            } else {
+                for (const auto& dir : include_directories) {
+                    include_file = dir / match[1].str();
+                    if (filesystem::exists(include_file)) {
+                        found = true;
+                        break;
                     }
                 }
             }
-            if (!include_in_file.is_open()) {
-                cerr << __LINE__ << "\n";
+            if (!found) {
+                std::cout << "unknown include file " << match[1].str() << " at file " << file_path.string() << " at line " << line_number << std::endl;
                 return false;
             }
-        } else if (regex_match(line, m, user_include)) {
-            path p = string(m[1]);
-            cout << p.string() << endl;
-
-            ifstream include_in_file;
-            include_in_file.close();
-            //поиск в род папке
-            for (const auto& dir_entry : filesystem::directory_iterator(in_file_path.parent_path())) {
-                cout << dir_entry.path().string() << endl;
-                if (dir_entry.is_regular_file() && dir_entry.path().filename() == p.filename()) {
-                    include_in_file.open(dir_entry.path());
-                    Preprocess(include_in_file, out_file, dir_entry.path(), include_directories);
-                } else if (dir_entry.is_directory()) {
-                    Preprocess(in_file, out_file, in_file_path, {dir_entry.path()});
-                }
+            if (!ProcessFile(include_file, out_file, include_directories, include_file.parent_path())) {
+                return false;
             }
-            //
-            if (!include_in_file.is_open()) {
-                for (const auto& dir_path : include_directories) {
-                    cout << dir_path << endl;
-                    for (const auto& dir_entry : filesystem::directory_iterator(dir_path)) {
-                        if (dir_entry.is_regular_file() && dir_entry.path().filename() == p.filename()) {
-                            include_in_file.open(dir_entry.path());
-                            Preprocess(include_in_file, out_file, dir_entry.path(), include_directories);
-                        } else if (dir_entry.is_directory()) {
-                            Preprocess(in_file, out_file, in_file_path, {dir_entry.path()});
-                        }
+        } else if (regex_match(line, match, default_include)) {
+            bool found = false;
+            for (const auto& dir : include_directories) {
+                path include_file = dir / match[1].str();
+                if (filesystem::exists(include_file)) {
+                    found = true;
+                    if (!ProcessFile(include_file, out_file, include_directories, include_file.parent_path())) {
+                        return false;
                     }
+                    break;
                 }
             }
-            if (!include_in_file.is_open()) {
-                cerr << __LINE__ << "\n";
+            if (!found) {
+                std::cout << "unknown include file " << match[1].str() << " at file " << file_path.string() << " at line " << line_number << std::endl;
                 return false;
             }
         } else {
-            out_file << line << endl;
+            out_file << line << "\n";
         }
     }
+
     return true;
 }
 
-// напишите эту функцию
 bool Preprocess(const path& in_file, const path& out_file, const vector<path>& include_directories) {
-    ifstream in_file_(in_file, ios::in);
-    if (!in_file_.is_open()) {
+    ifstream in_stream(in_file, ios::in);
+    if (!in_stream.is_open()) {
         return false;
     }
-    ofstream out_file_(out_file, ios::out);
+    ofstream out_stream(out_file, ios::out);
+    if (!out_stream.is_open()) {
+        return false;
+    }
 
-    return Preprocess(in_file_, out_file_, in_file, include_directories);
+    return ProcessFile(in_file, out_stream, include_directories, in_file.parent_path()); 
 }
 
 string GetFileContents(string file) {
