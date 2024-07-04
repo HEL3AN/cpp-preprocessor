@@ -14,6 +14,16 @@ path operator""_p(const char* data, std::size_t sz) {
     return path(data, data + sz);
 }
 
+bool FindIncludeFile(const string& include_filename, const vector<path>& include_directories, path& include_file) {
+    for (const auto& dir : include_directories) {
+        include_file = dir / include_filename;
+        if (exists(include_file)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool ProcessFile(const path& file_path, std::ostream& out_file, const vector<path>& include_directories, const path& current_directory) {
     ifstream in_file(file_path);
     if (!in_file.is_open()) {
@@ -30,20 +40,8 @@ bool ProcessFile(const path& file_path, std::ostream& out_file, const vector<pat
         ++line_number;
         smatch match;
         if (regex_match(line, match, user_include)) {
-            bool found = false;
             path include_file = current_directory / match[1].str();
-            if (filesystem::exists(include_file)) {
-                found = true;
-            } else {
-                for (const auto& dir : include_directories) {
-                    include_file = dir / match[1].str();
-                    if (filesystem::exists(include_file)) {
-                        found = true;
-                        break;
-                    }
-                }
-            }
-            if (!found) {
+            if (!exists(include_file) && !FindIncludeFile(match[1].str(), include_directories, include_file)) {
                 std::cout << "unknown include file " << match[1].str() << " at file " << file_path.string() << " at line " << line_number << std::endl;
                 return false;
             }
@@ -51,19 +49,12 @@ bool ProcessFile(const path& file_path, std::ostream& out_file, const vector<pat
                 return false;
             }
         } else if (regex_match(line, match, default_include)) {
-            bool found = false;
-            for (const auto& dir : include_directories) {
-                path include_file = dir / match[1].str();
-                if (filesystem::exists(include_file)) {
-                    found = true;
-                    if (!ProcessFile(include_file, out_file, include_directories, include_file.parent_path())) {
-                        return false;
-                    }
-                    break;
-                }
-            }
-            if (!found) {
+            path include_file = current_directory / match[1].str();
+            if (!FindIncludeFile(match[1].str(), include_directories, include_file)) {
                 std::cout << "unknown include file " << match[1].str() << " at file " << file_path.string() << " at line " << line_number << std::endl;
+                return false;
+            }
+            if (!ProcessFile(include_file, out_file, include_directories, include_file.parent_path())) {
                 return false;
             }
         } else {
