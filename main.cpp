@@ -14,6 +14,11 @@ path operator""_p(const char* data, std::size_t sz) {
     return path(data, data + sz);
 }
 
+void PrintError(std::__cxx11::smatch &match, const std::filesystem::__cxx11::path &file_path, size_t line_number)
+{
+    cout << "unknown include file " << match[1].str() << " at file " << file_path.string() << " at line " << line_number << endl;
+}
+
 bool FindIncludeFile(const string& include_filename, const vector<path>& include_directories, path& include_file) {
     for (const auto& dir : include_directories) {
         include_file = dir / include_filename;
@@ -42,7 +47,7 @@ bool ProcessFile(const path& file_path, std::ostream& out_file, const vector<pat
         if (regex_match(line, match, user_include)) {
             path include_file = current_directory / match[1].str();
             if (!exists(include_file) && !FindIncludeFile(match[1].str(), include_directories, include_file)) {
-                std::cout << "unknown include file " << match[1].str() << " at file " << file_path.string() << " at line " << line_number << std::endl;
+                PrintError(match, file_path, line_number);
                 return false;
             }
             if (!ProcessFile(include_file, out_file, include_directories, include_file.parent_path())) {
@@ -51,7 +56,7 @@ bool ProcessFile(const path& file_path, std::ostream& out_file, const vector<pat
         } else if (regex_match(line, match, default_include)) {
             path include_file = current_directory / match[1].str();
             if (!FindIncludeFile(match[1].str(), include_directories, include_file)) {
-                std::cout << "unknown include file " << match[1].str() << " at file " << file_path.string() << " at line " << line_number << std::endl;
+                PrintError(match, file_path, line_number);
                 return false;
             }
             if (!ProcessFile(include_file, out_file, include_directories, include_file.parent_path())) {
